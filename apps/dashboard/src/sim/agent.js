@@ -258,6 +258,42 @@ async function hermesTurn(sessionId, text) {
 
 const MESSAGE_RE = /(send|message|text|dm|ping)\b.*\b(discord|telegram|slack)\b|\b(discord|telegram|slack)\b.*\b(send|message|ping)|\b(dm me|send me)\b/i;
 
+// "Make me a carousel for The Homeless Entrepreneur and send it to Discord" — runs the
+// homeless-carousel skill (renders slide images) as a long Hermes task; the skill delivers to Discord.
+async function carouselTurn(sessionId, text) {
+  const trace = [];
+  const run = async (name, args) => {
+    const r = await callTool(name, args);
+    trace.push(r);
+    return r._raw ?? r.result;
+  };
+  const topic = text.replace(/(alexa|hermes)/gi, '').trim();
+  const prompt =
+    `Voice request: "${topic}". Use your homeless-carousel skill to create a LinkedIn/Instagram carousel for ` +
+    `The Homeless Entrepreneur (Manu's personal brand) on the topic they asked for, or pick a strong topic from your topic pool if none was given. ` +
+    `Render the slides and deliver them ONLY to my Discord DM using the skill's own Discord delivery. ` +
+    `Do NOT publish or post anywhere else. When finished, reply with one line: "Delivered: <carousel title>", or "Failed: <reason>".`;
+  const start = await run('hermes_start_task', { prompt });
+  if (!start?.runId) return { reply: speak(start), trace };
+  lastRun.set(sessionId, start.runId);
+  let lastStatus;
+  for (let i = 0; i < 160; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const stc = await callTool('hermes_task_status', { runId: start.runId });
+    const st = stc._raw ?? stc.result;
+    lastStatus = stc;
+    if (st?.status === 'completed' || st?.status === 'complete') {
+      if (lastStatus) trace.push(lastStatus);
+      const out = String((await run('hermes_task_result', { runId: start.runId }))?.result ?? '');
+      const failed = /^\s*Failed:/i.test(out);
+      return { reply: failed ? `The carousel didn't finish. ${out.replace(/^\s*Failed:\s*/i, '').slice(0, 200)}` : 'Your carousel is on Discord.', sent: !failed, trace };
+    }
+    if (['failed', 'error', 'cancelled'].includes(st?.status))
+      return { reply: `Hermes couldn't finish the carousel (${st.status}).`, trace };
+  }
+  return { reply: 'The carousel is still rendering. Check Discord in a minute.', trace };
+}
+
 // "Send me a message on Discord ..." — optionally have Hermes write it first.
 async function messageTurn(text) {
   const trace = [];
@@ -355,10 +391,11 @@ export function poll(sessionId) {
 
 // Hermes- and messaging-bound requests answer instantly and finish in the background.
 export async function say(sessionId, text) {
-  const isMsg = MESSAGE_RE.test(text);
-  if (isMsg || /hermes/i.test(text)) {
-    const work = isMsg ? messageTurn(text) : hermesTurn(sessionId, text);
-    const brain = isMsg ? 'message-route' : 'hermes-route';
+  const isCar = /carousel/i.test(text);
+  const isMsg = !isCar && MESSAGE_RE.test(text);
+  if (isCar || isMsg || /hermes/i.test(text)) {
+    const work = isCar ? carouselTurn(sessionId, text) : isMsg ? messageTurn(text) : hermesTurn(sessionId, text);
+    const brain = isCar ? 'carousel-route' : isMsg ? 'message-route' : 'hermes-route';
     work
       .then((out) => {
         const o = clean(out);
@@ -369,7 +406,7 @@ export async function say(sessionId, text) {
         outbox.set(sessionId, [...(outbox.get(sessionId) ?? []), { reply: `Sorry, that failed: ${err.message}`, trace: [], brain }]),
       );
     return {
-      reply: isMsg ? "On it. I'll send that to your Discord." : 'Let me ask Hermes.',
+      reply: isCar ? "On it. I'll make that carousel and send it to your Discord. It takes a couple of minutes." : isMsg ? "On it. I'll send that to your Discord." : 'Let me ask Hermes.',
       trace: [],
       brain,
       pending: true,
