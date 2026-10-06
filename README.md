@@ -9,6 +9,8 @@ runtime only ships a stdio MCP server. Hermes Home is the bridge: it exposes a s
 hand-picked set of tools to Alexa+ and keeps every long task asynchronous, so a voice
 assistant never waits on a slow agent.
 
+![Alexa+ simulator calling Hermes Home over MCP](docs/img/simulator.jpg)
+
 ## Try it in 2 minutes (simulated Alexa+)
 
 No Alexa+ Preview access is needed. `apps/dashboard` contains an **Alexa+ simulator**: a voice/chat
