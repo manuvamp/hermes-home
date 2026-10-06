@@ -12,11 +12,18 @@ import {
 } from './messaging.js';
 import type { TrackedRun } from './runs.js';
 
+/** Short, voice-friendly label: first sentence/clause of the request, capped. */
+function shortLabel(description: string): string {
+  const first = description.split(/[.\n]/)[0]?.replace(/^Voice request:\s*/i, '').replace(/["“”]/g, '').trim() ?? '';
+  return first.length > 70 ? `${first.slice(0, 67)}…` : first || 'your task';
+}
+
 export async function notifyRunComplete(run: TrackedRun): Promise<void> {
+  const label = shortLabel(run.description);
   const summary =
     run.status === 'completed'
-      ? `Hermes finished: "${run.description}". Ask Alexa what it found.`
-      : `Hermes task "${run.description}" ended with status ${run.status}${
+      ? `Hermes finished: ${label}.`
+      : `Hermes task "${label}" ended with status ${run.status}${
           run.error ? `: ${run.error}` : ''
         }.`;
 
