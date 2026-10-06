@@ -33,12 +33,12 @@ aside h3{margin:0 0 4px;font-size:12px;letter-spacing:.12em;text-transform:upper
 <aside><h3>MCP traffic</h3><div class="tag">Streamable HTTP · tools/call → Hermes Home</div><div id="trace"></div></aside>
 <script>
 const sid='s'+Math.random().toString(36).slice(2),chat=document.getElementById('chat'),trace=document.getElementById('trace'),ring=document.getElementById('ring');
-const prompts=["Ask Hermes what a good question to reflect on today is","Send me a message on Discord with a question to think about","Ask Hermes to plan a productive Saturday","Is Hermes done?"];
+const prompts=["Ask Hermes what a good question to reflect on today is","Send me a message on Discord with a question to think about","Make a Homeless Entrepreneur carousel and send it to my Discord","Ask Hermes to plan a productive Saturday","Is Hermes done?"];
 const chips=document.getElementById('chips');prompts.forEach(p=>{const s=document.createElement('span');s.textContent=p;s.onclick=()=>send(p);chips.append(s)});
 function add(cls,txt){const d=document.createElement('div');d.className='m '+cls;d.textContent=txt;chat.append(d);chat.scrollTop=1e9;return d}
 function speak(t){if(!window.speechSynthesis)return;speechSynthesis.cancel();t=t.replace(/[*#_\`>-]+/g,' ').replace(/\\s+/g,' ').trim();if(t.length>260)t=t.slice(0,260).replace(/[^.!?]*$/,'')||t.slice(0,260);const u=new SpeechSynthesisUtterance(t);u.onstart=()=>ring.classList.add('live');u.onend=()=>ring.classList.remove('live');speechSynthesis.speak(u)}
 function renderTrace(list){for(const c of list){const d=document.createElement('div');d.className='call';d.innerHTML='<span class="ms"></span><b></b><pre></pre>';d.querySelector('.ms').textContent=c.ms+' ms';d.querySelector('b').textContent='tools/call '+c.name;d.querySelector('pre').textContent=JSON.stringify(c.args)+'\n→ '+JSON.stringify(c.result,null,1);trace.prepend(d)}}
-async function waitFor(){const start=Date.now();while(Date.now()-start<240000){await new Promise(r=>setTimeout(r,2000));const evs=await (await fetch('/sim/poll?sid='+sid)).json();if(evs.length){for(const e of evs){add('a',e.reply);renderTrace(e.trace);speak(e.reply)}return}}add('a',"Hermes is taking a while. Ask me again in a moment.")}
+async function waitFor(){const start=Date.now();while(Date.now()-start<540000){await new Promise(r=>setTimeout(r,2000));const evs=await (await fetch('/sim/poll?sid='+sid)).json();if(evs.length){for(const e of evs){add('a',e.reply);renderTrace(e.trace);speak(e.reply)}return}}add('a',"Hermes is taking a while. Ask me again in a moment.")}
 async function send(text){text=text.replace(/^alexa,?\\s*/i,'').trim();if(!text)return;add('u',text);const w=add('a','…');ring.classList.add('live');
  try{const r=await (await fetch('/sim/say',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:sid,text})})).json();
   w.textContent=r.reply;document.getElementById('brain').textContent='brain: '+r.brain;
