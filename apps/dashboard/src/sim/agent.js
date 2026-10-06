@@ -20,8 +20,7 @@ const MAX_STEPS = 5;
 const SYSTEM = `You are Alexa+, a voice assistant. You have tools exposed by the "Hermes Home" MCP server.
 Rules:
 - Reply in one or two short spoken sentences. No markdown, no lists.
-- Quick questions -> hermes_ask. Long research/multi-step work -> hermes_start_task, then say Hermes is on it and give no id.
-- When asked if Hermes is done / what it found, use hermes_task_status then hermes_task_result with the most recent runId.
+- Answer everyday questions, chit-chat and general knowledge YOURSELF. Do NOT call hermes_* tools unless the user mentions Hermes by name (those requests are normally routed before you see them).
 - home_control is two-step: call it with confirm=false first, read the description back to the user and ask them to confirm. Only call it again with confirm=true after the user says yes.
 - Never invent calendar, home or GitHub data; use the tools.`;
 
@@ -167,7 +166,61 @@ async function llmTurn(sessionId, text) {
   return { reply: 'That took too many steps. Try asking a simpler question.', trace };
 }
 
+
+// ---------- OpenAI-compatible planner (Z.ai GLM, OpenAI, OpenRouter, ...) ----------
+const oaSessions = new Map();
+async function openaiTurn(sessionId, text) {
+  const tools = await listTools();
+  const messages = oaSessions.get(sessionId) ?? [{ role: 'system', content: SYSTEM }];
+  messages.push({ role: 'user', content: text });
+  const trace = [];
+  const fns = tools.map((t) => ({
+    type: 'function',
+    function: { name: t.name, description: t.description ?? t.name, parameters: cleanSchema(t.inputSchema ?? { type: 'object', properties: {} }) },
+  }));
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const res = await fetch(`${process.env.SIM_LLM_BASE_URL.replace(/\/+$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.SIM_LLM_API_KEY}` },
+      body: JSON.stringify({ model: process.env.SIM_LLM_MODEL, messages, tools: fns, ...(process.env.SIM_LLM_REASONING ? { reasoning_effort: process.env.SIM_LLM_REASONING } : {}) }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) throw new Error(`LLM ${res.status}: ${(await res.text()).slice(0, 160)}`);
+    const msg = (await res.json()).choices?.[0]?.message ?? {};
+    messages.push({ role: 'assistant', content: msg.content ?? '', ...(msg.tool_calls ? { tool_calls: msg.tool_calls } : {}) });
+    if (!msg.tool_calls?.length) {
+      oaSessions.set(sessionId, messages.slice(-30));
+      return { reply: (msg.content ?? '').trim() || 'Done.', trace };
+    }
+    for (const tc of msg.tool_calls) {
+      let args = {};
+      try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
+      const t = await callTool(tc.function.name, args);
+      trace.push(t);
+      messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(t._raw ?? t.result).slice(0, 4000) });
+    }
+  }
+  oaSessions.set(sessionId, messages.slice(-30));
+  return { reply: 'That took too many steps. Try something simpler.', trace };
+}
+
 // ---------- keyword fallback (no API key needed) ----------
+
+
+// Alexa's own replies for everyday chatter -- no Hermes involved.
+function alexaChat(text) {
+  const t = text.toLowerCase().trim();
+  const now = new Date();
+  if (/^(hi|hello|hey|yo|good (morning|afternoon|evening))\b/.test(t)) return 'Hi! What can I do for you?';
+  if (/how are you/.test(t)) return "I'm doing great, thanks for asking.";
+  if (/(thank|thanks)/.test(t)) return "You're welcome.";
+  if (/what('?s| is) the time|what time/.test(t)) return `It's ${now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+  if (/(what('?s| is) (the )?(date|day)|today'?s date)/.test(t)) return `Today is ${now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}.`;
+  if (/who are you|what are you/.test(t)) return "I'm Alexa, simulated here. For anything deep, I hand off to Hermes, your personal agent.";
+  if (/(what can you do|help)/.test(t))
+    return 'I can answer everyday questions, check your calendar and home, and message you on Discord. Say "ask Hermes" for research, plans, or carousels.';
+  return "I'm not sure about that one. Say \"ask Hermes\" and I'll hand it to your agent.";
+}
 
 const pending = new Map(); // sessionId -> { target, action }
 const lastRun = new Map(); // sessionId -> runId
@@ -215,17 +268,26 @@ async function ruleTurn(sessionId, text) {
   if (/(is hermes done|what did it find|status)/.test(t) && lastRun.has(sessionId)) {
     const id = lastRun.get(sessionId);
     const s = await run('hermes_task_status', { runId: id });
-    if (s?.status === 'completed') return { reply: speak(await run('hermes_task_result', { runId: id })), trace };
+    if (s?.status === 'completed') return { reply: brief(speak(await run('hermes_task_result', { runId: id }))), trace };
     return { reply: `Hermes is still ${s?.status ?? 'working'}.`, trace };
-  }
-  if (/(research|figure out|prepare|look into|find out|work on)/.test(t)) {
-    const r = await run('hermes_start_task', { prompt: text });
-    if (r?.runId) lastRun.set(sessionId, r.runId);
-    return { reply: "I've asked Hermes to work on that. Ask me later if it's done.", trace };
   }
   if (/^remember /.test(t))
     return { reply: speak(await run('hermes_remember', { content: text.slice(9) })), trace };
-  return { reply: speak(await run('hermes_ask', { prompt: text })), trace };
+  return { reply: alexaChat(text), trace };
+}
+
+// Voice-friendly: strip markdown, keep at most two sentences / ~240 chars. Full text stays in the trace.
+function brief(t) {
+  const plain = String(t).replace(/[*#`_>]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const sentences = plain.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) ?? [plain];
+  let out = '';
+  for (const x of sentences) {
+    if ((out + x).length > 240 && out) break;
+    out += x;
+    if (out.split(/[.!?]/).length > 2) break;
+  }
+  out = out.trim() || plain;
+  return out.length > 260 ? out.slice(0, 257) + '...' : out;
 }
 
 // Anything that mentions Hermes goes straight to the Hermes agent.
@@ -253,7 +315,21 @@ async function hermesTurn(sessionId, text) {
     return { reply: "I've asked Hermes to work on that. Ask me if it's done.", trace };
   }
   const r = await run('hermes_ask', { prompt });
-  return { reply: speak(r), trace };
+  if (r?.success === false && /abort|timed? ?out/i.test(String(r.error))) {
+    // Too slow for a quick ask: run it as a background task and wait for the answer.
+    const start = await run('hermes_start_task', { prompt });
+    if (!start?.runId) return { reply: speak(start), trace };
+    for (let i = 0; i < 60; i++) {
+      await new Promise((res) => setTimeout(res, 3000));
+      const st = await run('hermes_task_status', { runId: start.runId });
+      if (st?.status === 'completed' || st?.status === 'complete')
+        return { reply: brief(speak(await run('hermes_task_result', { runId: start.runId }))), trace };
+      if (['failed', 'error', 'cancelled'].includes(st?.status))
+        return { reply: `Hermes couldn't finish that (${st.status}).`, trace };
+    }
+    return { reply: 'Hermes is still thinking. Ask me again in a moment.', trace };
+  }
+  return { reply: brief(speak(r)), trace };
 }
 
 const MESSAGE_RE = /(send|message|text|dm|ping)\b.*\b(discord|telegram|slack)\b|\b(discord|telegram|slack)\b.*\b(send|message|ping)|\b(dm me|send me)\b/i;
@@ -417,9 +493,11 @@ export async function say(sessionId, text) {
 
 async function sayInner(sessionId, text) {
   try {
+    if (process.env.SIM_LLM_API_KEY && process.env.SIM_LLM_BASE_URL && process.env.SIM_LLM_MODEL)
+      return { ...(await openaiTurn(sessionId, text)), brain: `llm:${process.env.SIM_LLM_MODEL}` };
     return process.env.GOOGLE_API_KEY
       ? { ...(await llmTurn(sessionId, text)), brain: `gemini:${MODEL}` }
-      : { ...(await ruleTurn(sessionId, text)), brain: 'keyword-router' };
+      : { ...(await ruleTurn(sessionId, text)), brain: 'alexa-basic' };
   } catch (err) {
     return { reply: `Sorry, something went wrong: ${err.message}`, trace: [], brain: 'error' };
   }

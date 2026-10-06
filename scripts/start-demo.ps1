@@ -59,6 +59,11 @@ Start-Process node -WindowStyle Hidden -ArgumentList 'apps/mcp-server/dist/serve
 Write-Host "[4/4] Alexa+ simulator (:$simPort)"
 Stop-Port $simPort
 $env:MCP_URL = "http://127.0.0.1:$mcpPort"
+if (Test-Path .env) {
+    Get-Content .env | Where-Object { $_ -match '^(SIM_[A-Z_]+|GOOGLE_API_KEY)=' } | ForEach-Object {
+        $kv = $_ -split '=', 2; Set-Item -Path ("env:" + $kv[0]) -Value $kv[1].Trim()
+    }
+}
 Start-Process node -WindowStyle Hidden -ArgumentList 'apps/dashboard/src/server.js'
 
 # verify

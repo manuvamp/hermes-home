@@ -17,7 +17,7 @@ form{display:flex;gap:8px;padding:14px 20px;border-top:1px solid var(--line)}
 input{flex:1;background:var(--card);border:1px solid var(--line);color:var(--ink);padding:12px 14px;border-radius:10px;font:inherit}
 button{background:var(--cyan);color:#001;border:0;border-radius:10px;padding:0 16px;font-weight:600;cursor:pointer}
 button.mic{background:var(--card);color:var(--ink);border:1px solid var(--line)}button.mic.on{background:var(--bad);color:#fff}
-.chips{padding:0 20px 10px;display:flex;gap:6px;flex-wrap:wrap}.chips span{font-size:12px;border:1px solid var(--line);border-radius:99px;padding:4px 10px;color:var(--mute);cursor:pointer}
+.chips{padding:10px 20px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line)}button.chip{background:#0f1a36;color:var(--ink);border:1px solid var(--cyan);border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600}button.chip:hover{background:var(--cyan);color:#001}
 aside{border-left:1px solid var(--line);background:#0e1428;overflow:auto;padding:16px;height:100vh}
 aside h3{margin:0 0 4px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
 .call{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;font:12px ui-monospace,Consolas,monospace}
@@ -33,17 +33,19 @@ aside h3{margin:0 0 4px;font-size:12px;letter-spacing:.12em;text-transform:upper
 <aside><h3>MCP traffic</h3><div class="tag">Streamable HTTP · tools/call → Hermes Home</div><div id="trace"></div></aside>
 <script>
 const sid='s'+Math.random().toString(36).slice(2),chat=document.getElementById('chat'),trace=document.getElementById('trace'),ring=document.getElementById('ring');
-const prompts=["Ask Hermes what a good question to reflect on today is","Send me a message on Discord with a question to think about","Make a Homeless Entrepreneur carousel and send it to my Discord","Ask Hermes to plan a productive Saturday","Is Hermes done?"];
-const chips=document.getElementById('chips');prompts.forEach(p=>{const s=document.createElement('span');s.textContent=p;s.onclick=()=>send(p);chips.append(s)});
+const prompts=[["🎙 Reflect","Ask Hermes what a good question to reflect on today is"],["💬 Discord question","Send me a message on Discord with a question to think about"],["🎠 Carousel → Discord","Make a Homeless Entrepreneur carousel about why I build in public and send it to my Discord"],["🧠 Plan Saturday","Ask Hermes to plan a productive Saturday"],["✅ Is Hermes done?","Is Hermes done?"]];
+const chips=document.getElementById('chips');prompts.forEach(([label,text])=>{const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=label;b.title=text;b.onclick=()=>send(text);chips.append(b)});
 function add(cls,txt){const d=document.createElement('div');d.className='m '+cls;d.textContent=txt;chat.append(d);chat.scrollTop=1e9;return d}
-function speak(t){if(!window.speechSynthesis)return;speechSynthesis.cancel();t=t.replace(/[*#_\`>-]+/g,' ').replace(/\\s+/g,' ').trim();if(t.length>260)t=t.slice(0,260).replace(/[^.!?]*$/,'')||t.slice(0,260);const u=new SpeechSynthesisUtterance(t);u.onstart=()=>ring.classList.add('live');u.onend=()=>ring.classList.remove('live');speechSynthesis.speak(u)}
-function renderTrace(list){for(const c of list){const d=document.createElement('div');d.className='call';d.innerHTML='<span class="ms"></span><b></b><pre></pre>';d.querySelector('.ms').textContent=c.ms+' ms';d.querySelector('b').textContent='tools/call '+c.name;d.querySelector('pre').textContent=JSON.stringify(c.args)+'\n→ '+JSON.stringify(c.result,null,1);trace.prepend(d)}}
-async function waitFor(){const start=Date.now();while(Date.now()-start<540000){await new Promise(r=>setTimeout(r,2000));const evs=await (await fetch('/sim/poll?sid='+sid)).json();if(evs.length){for(const e of evs){add('a',e.reply);renderTrace(e.trace);speak(e.reply)}return}}add('a',"Hermes is taking a while. Ask me again in a moment.")}
+function speak(t,interrupt){if(!window.speechSynthesis)return;if(interrupt)speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.onstart=()=>ring.classList.add('live');u.onend=()=>{if(!speechSynthesis.speaking&&!speechSynthesis.pending)ring.classList.remove('live')};speechSynthesis.speak(u)}
+function shown(t){return String(t).split(String.fromCharCode(10)).join(' ').trim()}
+function say(t,interrupt){const d=add('a',t);speak(shown(t),interrupt);return d}
+function renderTrace(list){for(const c of list){const d=document.createElement('div');d.className='call';d.innerHTML='<span class="ms"></span><b></b><pre></pre>';d.querySelector('.ms').textContent=c.ms+' ms';d.querySelector('b').textContent='tools/call '+c.name;d.querySelector('pre').textContent=JSON.stringify(c.args)+String.fromCharCode(10)+'→ '+JSON.stringify(c.result,null,1);trace.prepend(d)}}
+async function waitFor(){const start=Date.now();while(Date.now()-start<540000){await new Promise(r=>setTimeout(r,2000));const evs=await (await fetch('/sim/poll?sid='+sid)).json();if(evs.length){for(const e of evs){say(e.reply);renderTrace(e.trace)}return}}add('a',"Hermes is taking a while. Ask me again in a moment.")}
 async function send(text){text=text.replace(/^alexa,?\\s*/i,'').trim();if(!text)return;add('u',text);const w=add('a','…');ring.classList.add('live');
  try{const r=await (await fetch('/sim/say',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:sid,text})})).json();
   w.textContent=r.reply;document.getElementById('brain').textContent='brain: '+r.brain;
-  for(const c of r.trace){const d=document.createElement('div');d.className='call';d.innerHTML='<span class="ms"></span><b></b><pre></pre>';d.querySelector('.ms').textContent=c.ms+' ms';d.querySelector('b').textContent='tools/call '+c.name;d.querySelector('pre').textContent=JSON.stringify(c.args)+'\\n→ '+JSON.stringify(c.result,null,1);trace.prepend(d)}
-  speak(r.reply);if(r.pending)waitFor()}catch(e){w.textContent='Error: '+e}finally{if(!speechSynthesis.speaking)ring.classList.remove('live')}}
+  renderTrace(r.trace);
+  speak(shown(w.textContent),true);if(r.pending)waitFor()}catch(e){w.textContent='Error: '+e}finally{if(!speechSynthesis.speaking)ring.classList.remove('live')}}
 document.getElementById('f').onsubmit=e=>{e.preventDefault();const i=document.getElementById('t');send(i.value);i.value=''};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition,mic=document.getElementById('mic');
 if(SR){const r=new SR();r.lang='en-US';r.onresult=e=>send(e.results[0][0].transcript);r.onend=()=>mic.classList.remove('on');mic.onclick=()=>{mic.classList.add('on');r.start()}}else mic.style.display='none';

@@ -64,6 +64,8 @@ export const config = {
     model: str('HERMES_MODEL', 'default'),
     askTimeoutMs: num('HERMES_ASK_TIMEOUT_MS', 20_000),
     required: str('HERMES_REQUIRED', 'true') !== 'false',
+    /** Post a "Hermes finished" message to messaging channels whenever a background run completes (default off) */
+    notifyOnRunComplete: str('NOTIFY_ON_RUN_COMPLETE', 'false') === 'true',
     /** SSH delivery for `hermes send` (outbound messaging via the VM gateway) */
     sendSshHost: str('HERMES_SEND_SSH_HOST'),
     sendSshUser: str('HERMES_SEND_SSH_USER', 'cocat'),
