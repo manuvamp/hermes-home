@@ -1,0 +1,25 @@
+# Optional convenience for the demo machine.
+# Hermes itself runs on the host (or a VM) per docs/hermes.md — compose
+# only needs to bring up *this* MCP server. HA stays on the LAN.
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: apps/mcp-server/Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      PORT: '3000'
+      AUTH_MODE: ${AUTH_MODE:-local}
+      HERMES_API_URL: ${HERMES_API_URL:-http://host.docker.internal:8642}
+      HERMES_API_KEY: ${HERMES_API_KEY:-}
+      HASS_URL: ${HASS_URL:-}
+      HASS_TOKEN: ${HASS_TOKEN:-}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - hermes-home-data:/app/apps/mcp-server/data
+    restart: unless-stopped
+
+volumes:
+  hermes-home-data:
