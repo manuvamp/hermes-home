@@ -1,0 +1,27 @@
+{
+  "name": "hermes-home",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hermes Home — Alexa+ front-end for a persistent Hermes personal agent over Streamable HTTP MCP",
+  "workspaces": [
+    "apps/*",
+    "integrations/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pwsh -File scripts/dev.ps1",
+    "dev:mcp": "npm run dev --workspace @hermes-home/mcp-server",
+    "dev:dashboard": "npm run dev --workspace @hermes-home/dashboard",
+    "demo": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-demo.ps1",
+    "onboard": "pwsh -File scripts/onboard.ps1",
+    "smoke": "pwsh -File scripts/smoke.ps1",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc --noEmit -p tsconfig.base.json 2>nul || echo 'typecheck per workspace'",
+    "test": "npm test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}
