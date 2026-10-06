@@ -32,7 +32,7 @@ aside h3{margin:0 0 4px;font-size:12px;letter-spacing:.12em;text-transform:upper
 </main>
 <aside><h3>MCP traffic</h3><div class="tag">Streamable HTTP · tools/call → Hermes Home</div><div id="trace"></div></aside>
 <script>
-const sid='s'+Math.random().toString(36).slice(2),chat=document.getElementById('chat'),trace=document.getElementById('trace'),ring=document.getElementById('ring');
+const sid=(()=>{try{let v=sessionStorage.getItem('sid');if(!v){v='s'+Math.random().toString(36).slice(2);sessionStorage.setItem('sid',v)}return v}catch(e){return 's'+Math.random().toString(36).slice(2)}})(),chat=document.getElementById('chat'),trace=document.getElementById('trace'),ring=document.getElementById('ring');
 const prompts=[["🎙 Reflect","Ask Hermes what a good question to reflect on today is"],["💬 Discord question","Send me a message on Discord with a question to think about"],["🎠 Carousel → Discord","Make a Homeless Entrepreneur carousel about why I build in public and send it to my Discord"],["🧠 Plan Saturday","Ask Hermes to plan a productive Saturday"],["✅ Is Hermes done?","Is Hermes done?"]];
 const chips=document.getElementById('chips');prompts.forEach(([label,text])=>{const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=label;b.title=text;b.onclick=()=>send(text);chips.append(b)});
 function add(cls,txt){const d=document.createElement('div');d.className='m '+cls;d.textContent=txt;chat.append(d);chat.scrollTop=1e9;return d}
