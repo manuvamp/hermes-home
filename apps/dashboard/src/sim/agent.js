@@ -224,6 +224,8 @@ function alexaChat(text) {
 
 const pending = new Map(); // sessionId -> { target, action }
 const lastRun = new Map(); // sessionId -> runId
+let globalLastRun = null;   // most recent task, survives page refreshes
+let globalLastKind = '';
 
 const speak = (r) =>
   typeof r === 'string'
@@ -299,8 +301,11 @@ async function hermesTurn(sessionId, text) {
     trace.push(r);
     return r._raw ?? r.result;
   };
-  const id = lastRun.get(sessionId);
-  if (id && /(done|finished|ready|what did (it|he|hermes) find|status|result)/.test(t)) {
+  const id = lastRun.get(sessionId) ?? globalLastRun;
+  const asksStatus = /(done|finished|ready|what did (it|he|hermes) find|status|result)/.test(t);
+  if (!id && asksStatus && !/(ask hermes|tell hermes)/.test(t))
+    return { reply: "I'm not tracking any Hermes task right now.", trace };
+  if (id && asksStatus) {
     const s = await run('hermes_task_status', { runId: id });
     if (s?.status === 'completed' || s?.status === 'complete')
       return { reply: speak(await run('hermes_task_result', { runId: id })), trace };
@@ -311,7 +316,7 @@ async function hermesTurn(sessionId, text) {
     .trim() || text;
   if (/(research|figure out|prepare|look into|find out|investigate|summari[sz]e|plan|draft|write)/.test(t)) {
     const r = await run('hermes_start_task', { prompt });
-    if (r?.runId) lastRun.set(sessionId, r.runId);
+    if (r?.runId) { lastRun.set(sessionId, r.runId); globalLastRun = r.runId; }
     return { reply: "I've asked Hermes to work on that. Ask me if it's done.", trace };
   }
   const r = await run('hermes_ask', { prompt });
@@ -351,7 +356,7 @@ async function carouselTurn(sessionId, text) {
     `Do NOT publish or post anywhere else. When finished, reply with one line: "Delivered: <carousel title>", or "Failed: <reason>".`;
   const start = await run('hermes_start_task', { prompt });
   if (!start?.runId) return { reply: speak(start), trace };
-  lastRun.set(sessionId, start.runId);
+  lastRun.set(sessionId, start.runId); globalLastRun = start.runId; globalLastKind = 'task';
   let lastStatus;
   for (let i = 0; i < 160; i++) {
     await new Promise((r) => setTimeout(r, 3000));
