@@ -5,6 +5,7 @@
  * channel (Hermes itself first, then direct Telegram/Discord/Slack).
  * Channels that aren't configured or fail are non-fatal — logged only.
  */
+import { config } from '../config.js';
 import { hermesNotify } from '../hermes/client.js';
 import {
   configuredChannels,
@@ -19,6 +20,7 @@ function shortLabel(description: string): string {
 }
 
 export async function notifyRunComplete(run: TrackedRun): Promise<void> {
+  if (!config.hermes.notifyOnRunComplete) return; // opt-in: NOTIFY_ON_RUN_COMPLETE=true
   const label = shortLabel(run.description);
   const summary =
     run.status === 'completed'

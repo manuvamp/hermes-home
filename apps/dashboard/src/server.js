@@ -28,16 +28,17 @@ const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) => `&#${c.codePointAt(0)};`);
 
 const server = http.createServer(async (req, res) => {
-  if (req.url === '/sim') {
+  const path = (req.url ?? '/').split('?')[0].replace(/\/+$/, '') || '/';
+  if (path === '/sim') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return res.end(simPage);
   }
-  if (req.url.startsWith('/sim/poll')) {
+  if (path === '/sim/poll') {
     const sid = new URL(req.url, 'http://x').searchParams.get('sid') ?? 'default';
     res.writeHead(200, { 'content-type': 'application/json' });
     return res.end(JSON.stringify(poll(sid)));
   }
-  if (req.url === '/sim/say' && req.method === 'POST') {
+  if (path === '/sim/say' && req.method === 'POST') {
     let raw = '';
     for await (const chunk of req) raw += chunk;
     let body = {};
